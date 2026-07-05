@@ -6,6 +6,8 @@ and your editor are the UI.
 
 ```sh
 hr init <name> [dir]   # scaffold a vault
+hr use [dir]           # set/show the global default vault (~/.hrrc)
+hr doctor              # check the vault for inconsistencies
 hr sync                # fetch feeds, write articles + sidecars
 hr list                # list articles (pretty, --tsv, --json)
 hr read <path>...      # mark as read (sidecar mutation)
@@ -28,11 +30,25 @@ sidebar with its own buffer keys (`<CR>`/`o`/`r`/`u`/`f`/`a`/`R`/`s`/`q`/`?`).
     cache.json                           # ETag / Last-Modified per feed
     raw/<feed>/<date>-<slug>-<id>.html   # original HTML, mirrors feeds/
     err.txt                              # one line per error during sync
-~/.hrrc                                  # local pointer: vault = "..."
+~/.hrrc                                  # global default vault: vault = "..."
+                                          # (set/read via `hr use`)
 ```
 
 The `<id>` segment is the first 8 hex chars of `sha1(GUID || URL ||
 title)`, so the same item lands on the same path across machines.
+
+### Which vault does `hr` use?
+
+Resolved in priority order: `-C <dir>` flag > `$HR_VAULT` > walking up
+from the current directory for an `hr.toml` (like `git` finds `.git`,
+so a cloned vault works as soon as you `cd` into it) > the global
+default in `~/.hrrc` (`hr use <dir>` to set it, `hr use` to show it,
+`hr use --clear` to unset it).
+
+`hr doctor` checks a vault's `hr.toml` and feed directories for
+inconsistencies (malformed sidecars, orphaned files, tombstone
+contradictions, id collisions, undeclared feed dirs) without modifying
+anything.
 
 ## Storage design
 
