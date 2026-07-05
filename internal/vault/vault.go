@@ -20,11 +20,19 @@ type Vault struct {
 }
 
 // Resolve returns the absolute root of the active vault for operating
-// commands. Priority: explicit (flag) > $HR_VAULT > ~/.hrrc.
+// commands. Priority: explicit (flag) > $HR_VAULT > discovered from the
+// current directory (walking up for hr.toml, like `.git`) > ~/.hrrc.
 func Resolve(explicit string) (string, error) {
 	raw := explicit
 	if raw == "" {
 		raw = os.Getenv("HR_VAULT")
+	}
+	if raw == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			if root, ok := Discover(cwd); ok {
+				raw = root
+			}
+		}
 	}
 	if raw == "" {
 		r, err := rc.Load()
@@ -35,9 +43,31 @@ func Resolve(explicit string) (string, error) {
 	}
 	if raw == "" {
 		return "", fmt.Errorf(
-			"no vault configured (run `hr init <name>`)")
+			"no vault configured (run `hr init <name>`, " +
+				"or cd into a cloned vault)")
 	}
 	return absExpand(raw)
+}
+
+// Discover walks up from dir looking for an hr.toml, the way `git`
+// discovers a repo root from `.git`. It lets a cloned vault work as
+// soon as you `cd` into it (or a subdirectory of it), with no ~/.hrrc
+// or $HR_VAULT needed. Returns the vault root and whether one was found.
+func Discover(dir string) (string, bool) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "hr.toml")); err == nil {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
 }
 
 // ResolveNew returns the absolute path for a vault about to be
