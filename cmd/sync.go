@@ -86,8 +86,8 @@ func feedLayout(cfg *config.Config, filter string) (nameW, total int) {
 //
 //	26/61  yandex           +3 new
 //
-// counter dim, name left-padded, status green (+N new) / dim (· idle) /
-// red (✗ error).
+// counter dim, name left-padded, status green (+N new) / dim
+// (· up to date) / red (✗ error).
 func liveLine(
 	st styler, nameW, counterW, i, total int, fr syncer.FeedResult,
 ) string {
@@ -99,7 +99,7 @@ func liveLine(
 	case fr.New > 0:
 		status = st.green(fmt.Sprintf("+%d new", fr.New))
 	default:
-		status = st.dim("· idle")
+		status = st.dim("· up to date")
 	}
 	return fmt.Sprintf("  %s  %-*s  %s", counter, nameW, fr.Name, status)
 }
