@@ -3,6 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
+	"strconv"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -38,6 +41,13 @@ var syncCmd = &cobra.Command{
 			ua = "hr/0.1"
 		}
 
+		// Live progress → stderr; the résumé → stdout. Color on each is
+		// gated on that stream being a terminal.
+		live := newStyler(os.Stderr)
+		nameW, total := feedLayout(cfg, syncFeedFilter)
+		counterW := len(strconv.Itoa(total))
+
+		start := time.Now()
 		res, err := syncer.Run(cmd.Context(), syncer.Options{
 			Vault:       v,
 			Config:      cfg,
@@ -45,44 +55,117 @@ var syncCmd = &cobra.Command{
 			UserAgent:   ua,
 			Force:       syncForce,
 			Concurrency: syncJobs,
-			OnFeedDone:  logFeedDone,
+			OnFeedDone: func(i, tot int, fr syncer.FeedResult) {
+				fmt.Fprintln(os.Stderr,
+					liveLine(live, nameW, counterW, i, tot, fr))
+			},
 		})
 		if res != nil {
-			printSyncSummary(res)
+			printSyncSummary(res, time.Since(start))
 		}
 		return err
 	},
 }
 
-// logFeedDone prints one live progress line per feed to stderr as it
-// finishes, leaving stdout for the final machine-readable summary. i is
-// the completion order (feeds sync concurrently).
-func logFeedDone(i, total int, fr syncer.FeedResult) {
-	switch {
-	case fr.Err != nil:
-		fmt.Fprintf(os.Stderr, "[%d/%d] %s: error: %v\n",
-			i, total, fr.Name, fr.Err)
-	case fr.NotModified:
-		fmt.Fprintf(os.Stderr, "[%d/%d] %s: not modified\n",
-			i, total, fr.Name)
-	default:
-		fmt.Fprintf(os.Stderr, "[%d/%d] %s: %d new, %d existing\n",
-			i, total, fr.Name, fr.New, fr.Existing)
+// feedLayout returns the widest selected feed name and how many feeds are
+// selected, so the live log can align its columns before syncing starts.
+func feedLayout(cfg *config.Config, filter string) (nameW, total int) {
+	for _, f := range cfg.Feeds {
+		if filter != "" && f.Name != filter {
+			continue
+		}
+		if len(f.Name) > nameW {
+			nameW = len(f.Name)
+		}
+		total++
 	}
+	return nameW, total
 }
 
-func printSyncSummary(r *syncer.Result) {
+// liveLine renders one uv-style progress line as a feed finishes:
+//
+//	26/61  yandex           +3 new
+//
+// counter dim, name left-padded, status green (+N new) / dim (· idle) /
+// red (✗ error).
+func liveLine(
+	st styler, nameW, counterW, i, total int, fr syncer.FeedResult,
+) string {
+	counter := st.dim(fmt.Sprintf("%*d/%d", counterW, i, total))
+	var status string
+	switch {
+	case fr.Err != nil:
+		status = st.red("✗ error")
+	case fr.New > 0:
+		status = st.green(fmt.Sprintf("+%d new", fr.New))
+	default:
+		status = st.dim("· idle")
+	}
+	return fmt.Sprintf("  %s  %-*s  %s", counter, nameW, fr.Name, status)
+}
+
+// printSyncSummary writes the résumé to stdout: a one-line header, only
+// the feeds that gained new items (most first), any errors, and a footer
+// of aggregate counts.
+func printSyncSummary(r *syncer.Result, elapsed time.Duration) {
+	st := newStyler(os.Stdout)
+
+	var changed, errored []syncer.FeedResult
+	var totNew, unchanged, nameW int
 	for _, fr := range r.Feeds {
 		switch {
 		case fr.Err != nil:
-			fmt.Printf("%s: error: %v\n", fr.Name, fr.Err)
-		case fr.NotModified:
-			fmt.Printf("%s: not modified\n", fr.Name)
+			errored = append(errored, fr)
+		case fr.New > 0:
+			changed = append(changed, fr)
+			totNew += fr.New
+			if len(fr.Name) > nameW {
+				nameW = len(fr.Name)
+			}
 		default:
-			fmt.Printf("%s: %d new, %d existing\n",
-				fr.Name, fr.New, fr.Existing)
+			unchanged++
 		}
 	}
+	sort.Slice(changed, func(i, j int) bool {
+		if changed[i].New != changed[j].New {
+			return changed[i].New > changed[j].New
+		}
+		return changed[i].Name < changed[j].Name
+	})
+
+	feeds := "feeds"
+	if len(r.Feeds) == 1 {
+		feeds = "feed"
+	}
+	fmt.Printf("%s synced %d %s in %s\n",
+		st.bold("✓"), len(r.Feeds), feeds, fmtDur(elapsed))
+
+	if len(changed) > 0 {
+		fmt.Println()
+		for _, fr := range changed {
+			fmt.Printf("  %-*s  %s   %s\n", nameW, fr.Name,
+				st.green(fmt.Sprintf("+%d", fr.New)),
+				st.dim(fmt.Sprintf("(%d total)", fr.New+fr.Existing)))
+		}
+	}
+	if len(errored) > 0 {
+		fmt.Println()
+		for _, fr := range errored {
+			fmt.Printf("  %s %s: %v\n", st.red("✗"), fr.Name, fr.Err)
+		}
+	}
+
+	fmt.Println()
+	errPart := fmt.Sprintf("%d errors", len(errored))
+	if len(errored) > 0 {
+		errPart = st.red(errPart)
+	}
+	fmt.Printf("  %d new · %d unchanged · %s\n", totNew, unchanged, errPart)
+}
+
+// fmtDur renders an elapsed duration compactly, e.g. "6.2s".
+func fmtDur(d time.Duration) string {
+	return d.Round(100 * time.Millisecond).String()
 }
 
 func init() {
