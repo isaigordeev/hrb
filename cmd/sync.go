@@ -14,6 +14,7 @@ import (
 var (
 	syncFeedFilter string
 	syncForce      bool
+	syncJobs       int
 )
 
 var syncCmd = &cobra.Command{
@@ -43,7 +44,7 @@ var syncCmd = &cobra.Command{
 			FeedName:    syncFeedFilter,
 			UserAgent:   ua,
 			Force:       syncForce,
-			OnFeedStart: logFeedStart,
+			Concurrency: syncJobs,
 			OnFeedDone:  logFeedDone,
 		})
 		if res != nil {
@@ -53,12 +54,9 @@ var syncCmd = &cobra.Command{
 	},
 }
 
-// logFeedStart/logFeedDone print live sync progress to stderr, leaving
-// stdout for the final machine-readable summary.
-func logFeedStart(i, total int, name string) {
-	fmt.Fprintf(os.Stderr, "[%d/%d] syncing %s…\n", i, total, name)
-}
-
+// logFeedDone prints one live progress line per feed to stderr as it
+// finishes, leaving stdout for the final machine-readable summary. i is
+// the completion order (feeds sync concurrently).
 func logFeedDone(i, total int, fr syncer.FeedResult) {
 	switch {
 	case fr.Err != nil:
@@ -92,5 +90,7 @@ func init() {
 		"sync only this feed name")
 	syncCmd.Flags().BoolVar(&syncForce, "force", false,
 		"ignore cache and refetch even if not modified")
+	syncCmd.Flags().IntVarP(&syncJobs, "jobs", "j", 0,
+		"number of feeds to fetch in parallel (0 = default)")
 	rootCmd.AddCommand(syncCmd)
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
@@ -21,6 +22,10 @@ import (
 	"github.com/isdg/hr/internal/vault"
 )
 
+// defaultConcurrency is the worker count used when Options.Concurrency
+// is left at zero.
+const defaultConcurrency = 8
+
 type Options struct {
 	Vault     *vault.Vault
 	Config    *config.Config
@@ -28,11 +33,17 @@ type Options struct {
 	UserAgent string
 	Force     bool // ignore cache; refetch even if not modified
 
-	// OnFeedStart/OnFeedDone, if set, are called around each feed so
-	// callers can show live progress. i is 1-based; total is the feed
-	// count. Both run on Run's goroutine (no concurrency to guard).
-	OnFeedStart func(i, total int, name string)
-	OnFeedDone  func(i, total int, fr FeedResult)
+	// Concurrency bounds how many feeds are fetched in parallel. Zero or
+	// negative means defaultConcurrency; it is also clamped to the feed
+	// count.
+	Concurrency int
+
+	// OnFeedDone, if set, is called once per feed as it finishes so
+	// callers can show live progress. i is the 1-based completion order
+	// (the Nth feed to finish, not its config index); total is the feed
+	// count. Feeds run concurrently, but OnFeedDone calls are serialized,
+	// so the callback needs no locking of its own.
+	OnFeedDone func(i, total int, fr FeedResult)
 }
 
 type FeedResult struct {
@@ -62,19 +73,50 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		return nil, err
 	}
 
-	conv := md.NewConverter("", true, nil)
-	result := &Result{Feeds: make([]FeedResult, 0, len(feeds))}
 	total := len(feeds)
-	for i, f := range feeds {
-		if opts.OnFeedStart != nil {
-			opts.OnFeedStart(i+1, total, f.Name)
-		}
-		fr := syncFeed(ctx, opts, f, c, conv, elog)
-		if opts.OnFeedDone != nil {
-			opts.OnFeedDone(i+1, total, fr)
-		}
-		result.Feeds = append(result.Feeds, fr)
+	result := &Result{Feeds: make([]FeedResult, total)}
+
+	workers := opts.Concurrency
+	if workers <= 0 {
+		workers = defaultConcurrency
 	}
+	if workers > total {
+		workers = total
+	}
+
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex // serializes OnFeedDone and the done counter
+		done int
+	)
+	jobs := make(chan int)
+
+	worker := func() {
+		defer wg.Done()
+		// Each worker owns its converter; md.Converter is not documented
+		// as goroutine-safe.
+		conv := md.NewConverter("", true, nil)
+		for i := range jobs {
+			fr := syncFeed(ctx, opts, feeds[i], c, conv, elog)
+			result.Feeds[i] = fr // distinct index per feed: race-free
+			if opts.OnFeedDone != nil {
+				mu.Lock()
+				done++
+				opts.OnFeedDone(done, total, fr)
+				mu.Unlock()
+			}
+		}
+	}
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go worker()
+	}
+	for i := range feeds {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
 
 	if err := c.Save(); err != nil {
 		elog.Write("cache.save", err)

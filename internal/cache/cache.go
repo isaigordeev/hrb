@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type Entry struct {
 
 type Cache struct {
 	path    string
+	mu      sync.Mutex
 	Entries map[string]Entry `json:"entries"`
 }
 
@@ -50,6 +52,17 @@ func (c *Cache) Save() error {
 	return os.WriteFile(c.path, data, 0o644)
 }
 
-func (c *Cache) Get(feed string) Entry { return c.Entries[feed] }
+// Get and Set are safe for concurrent use so the syncer can update
+// per-feed state from multiple workers. Load and Save are not guarded;
+// they run single-threaded before and after the worker pool.
+func (c *Cache) Get(feed string) Entry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Entries[feed]
+}
 
-func (c *Cache) Set(feed string, e Entry) { c.Entries[feed] = e }
+func (c *Cache) Set(feed string, e Entry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Entries[feed] = e
+}
