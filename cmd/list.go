@@ -13,12 +13,13 @@ import (
 
 var (
 	listUnread    bool
-	listFeed      string
+	listFeeds     []string
 	listGroups    []string
 	listTag       string
 	listSince     string
 	listCorrupted bool
 	feedGroups    []string
+	feedFeeds     []string
 	listTSV       bool
 	listJSON      bool
 )
@@ -61,6 +62,7 @@ var feedCmd = &cobra.Command{
 		items, err := listing.List(v, listing.Filter{
 			Unread: true,
 			Groups: feedGroups,
+			Feeds:  feedFeeds,
 		})
 		if err != nil {
 			return err
@@ -71,7 +73,7 @@ var feedCmd = &cobra.Command{
 
 func buildListFilter() (listing.Filter, error) {
 	f := listing.Filter{
-		Feed:      listFeed,
+		Feeds:     listFeeds,
 		Groups:    listGroups,
 		Tag:       listTag,
 		Unread:    listUnread,
@@ -164,8 +166,8 @@ func stateChar(set bool, ch string) string {
 func init() {
 	listCmd.Flags().BoolVar(&listUnread, "unread", false,
 		"only unread items")
-	listCmd.Flags().StringVar(&listFeed, "feed", "",
-		"filter to a single feed")
+	listCmd.Flags().StringSliceVar(&listFeeds, "feed", nil,
+		"filter to a feed (repeatable; exact name match)")
 	listCmd.Flags().StringSliceVar(&listGroups, "group", nil,
 		"filter to a folder under feeds/ (repeatable; subtree match; \"/\" = top level only)")
 	listCmd.Flags().StringVar(&listTag, "tag", "",
@@ -180,6 +182,8 @@ func init() {
 		"JSON output")
 	feedCmd.Flags().StringSliceVar(&feedGroups, "group", nil,
 		"filter to a folder under feeds/ (repeatable; subtree match)")
+	feedCmd.Flags().StringSliceVar(&feedFeeds, "feed", nil,
+		"filter to a feed (repeatable; exact name match)")
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(feedCmd)
 }

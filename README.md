@@ -77,24 +77,32 @@ For feeds declared in `hr.toml`, `hr mv` also updates their `group` key
 in place, preserving every comment and the rest of the formatting
 (`--no-config` skips it).
 
-#### Reading one shelf
+#### Reading a shelf or an author
 
-`hr groups` summarizes the tree, and `hr list` / `hr feed` take a
-`--group` filter:
+`hr groups` summarizes the tree; `hr list` and `hr feed` take `--group`
+and `--feed` filters, both repeatable:
 
 ```sh
-hr groups                                  # counts per folder
-hr list --group humans                     # includes humans/archive
+hr groups                                      # counts per folder
+hr list --group humans                         # includes humans/archive
 hr list --group books --group humans/archive   # stacks (union)
-hr list --group books,sites                # comma form works too
-hr list --group / --unread                 # top-level feeds only
-hr feed --group sites                      # unread TSV for one shelf
+hr list --group books,sites                    # comma form works too
+hr list --group / --unread                     # top-level feeds only
+hr list --feed matklad                         # one author
+hr list --feed matklad,danluu                  # several authors (union)
+hr list --feed matklad --group humans          # both must hold
+hr feed --group sites --feed lobsters          # unread TSV, scoped
 ```
 
-`--group` is repeatable and unions its values, matches by **subtree**
-(so `--group humans` covers `humans/archive`), and composes with
-`--unread`, `--tag`, `--since` and the rest rather than replacing them.
-A bare `/` means the feeds root only.
+`--group` and `--feed` are each repeatable and union their own values,
+while the two flags **intersect** with each other — so several shelves
+or several authors widen the result, but combining a shelf with an
+author narrows it. Both compose with `--unread`, `--tag`, `--since` and
+the rest rather than replacing them.
+
+`--group` matches by **subtree**, so `--group humans` covers
+`humans/archive`; a bare `/` means the feeds root only. `--feed` matches
+the feed name **exactly** — it's a name, not a path or a prefix.
 
 `hr groups` counts each group's own feeds, not its subgroups, so the
 numbers sum to the vault total instead of double-counting nested

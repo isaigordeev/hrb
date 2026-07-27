@@ -60,7 +60,7 @@ func (it Item) Label() string {
 }
 
 type Filter struct {
-	Feed      string
+	Feeds     []string // any-of; empty means every feed
 	Groups    []string // any-of; empty means every group
 	Tag       string
 	Unread    bool
@@ -120,7 +120,7 @@ func parsePublished(s string) time.Time {
 }
 
 func (f Filter) match(it Item, now time.Time) bool {
-	if f.Feed != "" && it.Feed != f.Feed {
+	if !f.matchFeed(it) {
 		return false
 	}
 	if f.Tag != "" && !slices.Contains(it.Tags, f.Tag) {
@@ -139,6 +139,17 @@ func (f Filter) match(it Item, now time.Time) bool {
 		return false
 	}
 	return true
+}
+
+// matchFeed reports whether an item comes from any of the filter's
+// feeds. Feeds stack as a union, so --feed matklad --feed danluu reads
+// both authors. Matching is exact: a feed is a name, not a path or a
+// prefix.
+func (f Filter) matchFeed(it Item) bool {
+	if len(f.Feeds) == 0 {
+		return true
+	}
+	return slices.Contains(f.Feeds, it.Feed)
 }
 
 // matchGroup reports whether an item falls under any of the filter's

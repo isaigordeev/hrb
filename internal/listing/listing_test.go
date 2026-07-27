@@ -170,3 +170,75 @@ func TestGroupSurvivesCachedIndex(t *testing.T) {
 		t.Errorf("cached items lost their group: %+v", items)
 	}
 }
+
+// --feed stacks the same way --group does, so several authors can be
+// read in one command. Matching is exact: a feed is a name, not a path.
+func TestFilterByFeedStacks(t *testing.T) {
+	v := testVault(t)
+	cases := []struct {
+		feeds []string
+		want  []string
+	}{
+		{[]string{"matklad"}, []string{"nested"}},
+		{[]string{"matklad", "plato"}, []string{"nested", "book"}},
+		{[]string{"matklad", "ewd", "lobsters"}, []string{"nested", "deep", "flat"}},
+		{nil, []string{"flat", "nested", "deep", "book"}},
+		{[]string{"nosuchfeed"}, nil},
+		{[]string{"nosuchfeed", "plato"}, []string{"book"}},
+		// Duplicates must not duplicate results.
+		{[]string{"plato", "plato"}, []string{"book"}},
+		// Exact match only: no prefix or substring behaviour.
+		{[]string{"matk"}, nil},
+		{[]string{"matklad2"}, nil},
+	}
+	for _, tc := range cases {
+		items, err := List(v, Filter{Feeds: tc.feeds})
+		if err != nil {
+			t.Fatalf("List(feeds=%v): %v", tc.feeds, err)
+		}
+		if len(items) != len(tc.want) {
+			t.Errorf("feeds %v matched %d items, want %d",
+				tc.feeds, len(items), len(tc.want))
+			continue
+		}
+		got := map[string]bool{}
+		for _, it := range items {
+			got[it.Title] = true
+		}
+		for _, w := range tc.want {
+			if !got[w] {
+				t.Errorf("feeds %v missed %q", tc.feeds, w)
+			}
+		}
+	}
+}
+
+// --feed and --group intersect (both must hold), while values within
+// each flag union. Mixing them narrows rather than widens.
+func TestFilterFeedAndGroupIntersect(t *testing.T) {
+	v := testVault(t)
+	// ewd is in humans/archive; plato is in books. Asking for both
+	// feeds but only the books shelf leaves just plato.
+	items, err := List(v, Filter{
+		Feeds:  []string{"ewd", "plato"},
+		Groups: []string{"books"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Title != "book" {
+		t.Errorf("got %+v, want only the books-shelf item", items)
+	}
+
+	// A feed outside every named group yields nothing.
+	items, err = List(v, Filter{
+		Feeds:  []string{"matklad"},
+		Groups: []string{"books"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Errorf("got %+v, want none", items)
+	}
+}
