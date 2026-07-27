@@ -14,7 +14,7 @@ import (
 
 // indexVersion bumps whenever the cached Item shape changes, forcing a
 // full rebuild on the next list.
-const indexVersion = 3
+const indexVersion = 4
 
 type indexEntry struct {
 	MDMod   int64 `json:"md"`   // .md mod time, UnixNano
@@ -75,7 +75,7 @@ func loadAll(v *vault.Vault) ([]Item, error) {
 			items = append(items, e.Item)
 			continue
 		}
-		it, err := loadItem(p)
+		it, err := loadItem(p, v.GroupOf(filepath.Dir(p)))
 		if err != nil {
 			dirty = true
 			continue

@@ -23,6 +23,7 @@ type Item struct {
 	Alias     string   `json:"alias,omitempty"`
 	URL       string   `json:"url"`
 	Feed      string   `json:"feed"`
+	Group     string   `json:"group,omitempty"`
 	GUID      string   `json:"guid,omitempty"`
 	Published PubTime  `json:"published"`
 	Read      bool     `json:"read"`
@@ -60,6 +61,7 @@ func (it Item) Label() string {
 
 type Filter struct {
 	Feed      string
+	Groups    []string // any-of; empty means every group
 	Tag       string
 	Unread    bool
 	Corrupted bool
@@ -86,7 +88,7 @@ func List(v *vault.Vault, f Filter) ([]Item, error) {
 	return items, nil
 }
 
-func loadItem(path string) (Item, error) {
+func loadItem(path, group string) (Item, error) {
 	fm, err := article.ParseFile(path)
 	if err != nil {
 		return Item{}, err
@@ -99,6 +101,7 @@ func loadItem(path string) (Item, error) {
 		Alias:     textfmt.Line(m.Alias),
 		URL:       textfmt.Line(fm.URL),
 		Feed:      textfmt.Line(fm.Feed),
+		Group:     group,
 		GUID:      textfmt.Line(fm.GUID),
 		Published: PubTime{pub},
 		Read:      m.Read,
@@ -123,6 +126,9 @@ func (f Filter) match(it Item, now time.Time) bool {
 	if f.Tag != "" && !slices.Contains(it.Tags, f.Tag) {
 		return false
 	}
+	if !f.matchGroup(it) {
+		return false
+	}
 	if f.Unread && it.Read {
 		return false
 	}
@@ -133,6 +139,35 @@ func (f Filter) match(it Item, now time.Time) bool {
 		return false
 	}
 	return true
+}
+
+// matchGroup reports whether an item falls under any of the filter's
+// groups. Groups stack as a union, so --group humans --group sites
+// reads both shelves.
+//
+// Each match is by subtree, so --group humans also covers the feeds in
+// humans/archive: the folder you name is the shelf you asked for, not
+// one exact level of it.
+func (f Filter) matchGroup(it Item) bool {
+	if len(f.Groups) == 0 {
+		return true
+	}
+	for _, raw := range f.Groups {
+		g, err := vault.CleanGroup(raw)
+		if err != nil {
+			continue
+		}
+		if g == "" {
+			if it.Group == "" { // an explicit "/" means the feeds root only
+				return true
+			}
+			continue
+		}
+		if it.Group == g || strings.HasPrefix(it.Group, g+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseSince accepts standard Go durations (e.g. 24h) plus the "Nd"

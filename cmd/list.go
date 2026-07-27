@@ -14,9 +14,11 @@ import (
 var (
 	listUnread    bool
 	listFeed      string
+	listGroups    []string
 	listTag       string
 	listSince     string
 	listCorrupted bool
+	feedGroups    []string
 	listTSV       bool
 	listJSON      bool
 )
@@ -56,7 +58,10 @@ var feedCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		items, err := listing.List(v, listing.Filter{Unread: true})
+		items, err := listing.List(v, listing.Filter{
+			Unread: true,
+			Groups: feedGroups,
+		})
 		if err != nil {
 			return err
 		}
@@ -67,6 +72,7 @@ var feedCmd = &cobra.Command{
 func buildListFilter() (listing.Filter, error) {
 	f := listing.Filter{
 		Feed:      listFeed,
+		Groups:    listGroups,
 		Tag:       listTag,
 		Unread:    listUnread,
 		Corrupted: listCorrupted,
@@ -83,13 +89,16 @@ func buildListFilter() (listing.Filter, error) {
 
 func printTSV(items []listing.Item) error {
 	for _, it := range items {
-		fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\n",
+		// Group is appended, not inserted: existing consumers index
+		// fields 1-6 and must keep working.
+		fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			it.Path,
 			it.Feed,
 			it.Published.Format("2006-01-02"),
 			boolBit(it.Read),
 			boolBit(it.Favorite),
 			tabSafe(it.Label()),
+			it.Group,
 		)
 	}
 	return nil
@@ -157,6 +166,8 @@ func init() {
 		"only unread items")
 	listCmd.Flags().StringVar(&listFeed, "feed", "",
 		"filter to a single feed")
+	listCmd.Flags().StringSliceVar(&listGroups, "group", nil,
+		"filter to a folder under feeds/ (repeatable; subtree match; \"/\" = top level only)")
 	listCmd.Flags().StringVar(&listTag, "tag", "",
 		"filter by tag")
 	listCmd.Flags().StringVar(&listSince, "since", "",
@@ -167,6 +178,8 @@ func init() {
 		"tab-separated output (machine-friendly)")
 	listCmd.Flags().BoolVar(&listJSON, "json", false,
 		"JSON output")
+	feedCmd.Flags().StringSliceVar(&feedGroups, "group", nil,
+		"filter to a folder under feeds/ (repeatable; subtree match)")
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(feedCmd)
 }

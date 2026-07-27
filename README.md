@@ -10,6 +10,7 @@ hr use [dir]           # set/show the global default vault (~/.hrrc)
 hr doctor              # check the vault for inconsistencies
 hr sync                # fetch feeds, write articles + sidecars
 hr mv <feed>... <group> # move feed folders into a group under feeds/
+hr groups              # folders under feeds/ + feed/article/unread counts
 hr list                # list articles (pretty, --tsv, --json)
 hr read <path>...      # mark as read (sidecar mutation)
 hr unread <path>...
@@ -76,6 +77,30 @@ For feeds declared in `hr.toml`, `hr mv` also updates their `group` key
 in place, preserving every comment and the rest of the formatting
 (`--no-config` skips it).
 
+#### Reading one shelf
+
+`hr groups` summarizes the tree, and `hr list` / `hr feed` take a
+`--group` filter:
+
+```sh
+hr groups                                  # counts per folder
+hr list --group humans                     # includes humans/archive
+hr list --group books --group humans/archive   # stacks (union)
+hr list --group books,sites                # comma form works too
+hr list --group / --unread                 # top-level feeds only
+hr feed --group sites                      # unread TSV for one shelf
+```
+
+`--group` is repeatable and unions its values, matches by **subtree**
+(so `--group humans` covers `humans/archive`), and composes with
+`--unread`, `--tag`, `--since` and the rest rather than replacing them.
+A bare `/` means the feeds root only.
+
+`hr groups` counts each group's own feeds, not its subgroups, so the
+numbers sum to the vault total instead of double-counting nested
+shelves. `--tsv` output gained the group as a **trailing** seventh
+column, so anything indexing fields 1-6 keeps working.
+
 A directory under `feeds/` holding at least one file is a **feed**; one
 holding only subdirectories is a **group**. Two directories sharing a
 name are ambiguous — sync and `hr doctor` both report it rather than
@@ -138,8 +163,9 @@ anything.
 - **No schema version field.** Adding sidecar/frontmatter fields is
   forward-compatible (zero values are fine); removing them silently
   orphans data. Bump `schema = N` if/when this matters.
-- **No tests yet.** Filename derivation, sidecar I/O, alias toggling
-  are uncovered.
+- **Partial test coverage.** Feed-directory resolution, moves, config
+  editing, group filtering, sync and tombstones are covered; sidecar
+  I/O and alias toggling still aren't.
 
 ## Formatting
 
