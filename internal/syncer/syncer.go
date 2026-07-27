@@ -47,10 +47,20 @@ type Options struct {
 }
 
 type FeedResult struct {
-	Name        string
-	URL         string
-	New         int
-	Existing    int
+	Name string
+	URL  string
+	// New and Existing count only the items this fetch's feed response
+	// contained: written now, and already on disk. A feed serving the
+	// latest N entries therefore has New+Existing == N regardless of how
+	// much of it is archived, so neither is the feed's article count.
+	New      int
+	Existing int
+
+	// Total is the feed's article count on disk after the sync — the whole
+	// archive, including articles older than anything the feed still
+	// serves. Zero when the feed errored or was not modified, since
+	// nothing was counted.
+	Total       int
 	NotModified bool
 	Err         error
 }
@@ -211,12 +221,27 @@ func syncFeed(
 		}
 	}
 
+	// Count the archive on disk rather than deriving it from New+Existing,
+	// which only ever covers the items this response carried.
+	fr.Total = countArticles(feedDir)
+
 	c.Set(f.Name, cache.Entry{
 		ETag:         res.ETag,
 		LastModified: res.LastModified,
 		FetchedAt:    time.Now().UTC(),
 	})
 	return fr
+}
+
+// countArticles returns how many articles the feed directory holds. A
+// glob failure yields 0 rather than an error: the count is display-only
+// and must never fail a sync that otherwise succeeded.
+func countArticles(feedDir string) int {
+	hits, err := filepath.Glob(filepath.Join(feedDir, "*.md"))
+	if err != nil {
+		return 0
+	}
+	return len(hits)
 }
 
 // writeRawHTML stashes the original feed body HTML at

@@ -216,3 +216,80 @@ func TestRunPlacesNewFeedInConfiguredGroup(t *testing.T) {
 		t.Errorf("feeds/sites/alpha holds %d articles, want 2", len(hits))
 	}
 }
+
+// FeedResult.Total is the feed's article count on disk, not the size of
+// the feed response. A feed serving only its latest entries used to make
+// `hr sync` report New+Existing as the "total", which undercounts every
+// archived article the feed no longer lists.
+func TestRunTotalCountsArchiveNotResponse(t *testing.T) {
+	srv := testServer(t)
+	defer srv.Close()
+	v := newVault(t)
+
+	// Three articles already on disk that the feed will not return.
+	dir := filepath.Join(v.FeedsDir(), "alpha")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"2001-01-01-old-one-aaaaaaa1.md",
+		"2002-01-01-old-two-aaaaaaa2.md",
+		"2003-01-01-old-three-aaaaaa3.md",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res, err := Run(context.Background(), Options{
+		Vault:  v,
+		Config: &config.Config{Feeds: []config.Feed{{Name: "alpha", URL: srv.URL + "/ok"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr := res.Feeds[0]
+
+	// The response carried 2 items, both new.
+	if fr.New != 2 || fr.Existing != 0 {
+		t.Errorf("New=%d Existing=%d, want 2/0", fr.New, fr.Existing)
+	}
+	// 3 pre-existing + 2 fetched.
+	if fr.Total != 5 {
+		t.Errorf("Total = %d, want 5 (the archive, not the response)", fr.Total)
+	}
+	if fr.Total == fr.New+fr.Existing {
+		t.Error("Total is still New+Existing; the archive is being undercounted")
+	}
+
+	// And it matches what's actually on disk.
+	hits, _ := filepath.Glob(filepath.Join(dir, "*.md"))
+	if fr.Total != len(hits) {
+		t.Errorf("Total = %d but %d .md files on disk", fr.Total, len(hits))
+	}
+}
+
+// Re-syncing an unchanged feed reports every item as Existing, and Total
+// still reflects the archive.
+func TestRunTotalOnResync(t *testing.T) {
+	srv := testServer(t)
+	defer srv.Close()
+	v := newVault(t)
+	cfg := &config.Config{Feeds: []config.Feed{{Name: "alpha", URL: srv.URL + "/ok"}}}
+
+	if _, err := Run(context.Background(), Options{Vault: v, Config: cfg}); err != nil {
+		t.Fatal(err)
+	}
+	// Force a refetch so the items come back and land as Existing.
+	res, err := Run(context.Background(), Options{Vault: v, Config: cfg, Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr := res.Feeds[0]
+	if fr.New != 0 || fr.Existing != 2 {
+		t.Errorf("New=%d Existing=%d, want 0/2", fr.New, fr.Existing)
+	}
+	if fr.Total != 2 {
+		t.Errorf("Total = %d, want 2", fr.Total)
+	}
+}

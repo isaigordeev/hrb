@@ -145,7 +145,7 @@ func printSyncSummary(r *syncer.Result, elapsed time.Duration) {
 		for _, fr := range changed {
 			fmt.Printf("  %-*s  %s   %s\n", nameW, fr.Name,
 				st.green(fmt.Sprintf("+%d", fr.New)),
-				st.dim(fmt.Sprintf("(%d total)", fr.New+fr.Existing)))
+				st.dim(fmt.Sprintf("(%d total)", fr.Total)))
 		}
 	}
 	if len(errored) > 0 {
@@ -160,7 +160,10 @@ func printSyncSummary(r *syncer.Result, elapsed time.Duration) {
 	if len(errored) > 0 {
 		errPart = st.red(errPart)
 	}
-	fmt.Printf("  %d new · %d unchanged · %s\n", totNew, unchanged, errPart)
+	// "new" counts articles but "unchanged" counts feeds, so say so —
+	// side by side they otherwise read as the same unit.
+	fmt.Printf("  %d new · %s unchanged · %s\n",
+		totNew, plural(unchanged, "feed"), errPart)
 }
 
 // fmtDur renders an elapsed duration compactly, e.g. "6.2s".
