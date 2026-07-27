@@ -28,7 +28,7 @@ sidebar with its own buffer keys (`<CR>`/`o`/`r`/`u`/`f`/`a`/`R`/`s`/`q`/`?`).
   feeds/<feed>/<date>-<slug>-<id>.meta.toml   # mutable state (committed)
   .hr/                                   # gitignored
     cache.json                           # ETag / Last-Modified per feed
-    raw/<feed>/<date>-<slug>-<id>.html   # original HTML, mirrors feeds/
+    raw/<feed>/<date>-<slug>-<id>.html   # original HTML, keyed by feed name
     err.txt                              # one line per error during sync
 ~/.hrrc                                  # global default vault: vault = "..."
                                           # (set/read via `hr use`)
@@ -36,6 +36,44 @@ sidebar with its own buffer keys (`<CR>`/`o`/`r`/`u`/`f`/`a`/`R`/`s`/`q`/`?`).
 
 The `<id>` segment is the first 8 hex chars of `sha1(GUID || URL ||
 title)`, so the same item lands on the same path across machines.
+
+### Grouping feeds into folders
+
+Feed directories may be nested under `feeds/` to any depth, so a large
+vault can be shelved by kind:
+
+```
+feeds/
+  humans/matklad/…        # personal blogs
+  sites/lobsters/…        # aggregators, project blogs
+  books/classics/knuth/…  # hand-curated, never synced
+```
+
+**The directory is the source of truth.** `hr` finds a feed by its
+directory *name* wherever it sits, so you regroup with plain `mv` /
+`git mv` and nothing else has to change — no config edit, no re-sync, no
+rewritten article paths. Feed directories `hr` never fetched (a shelf of
+essays you assembled by hand) group exactly like synced ones.
+
+A directory under `feeds/` holding at least one file is a **feed**; one
+holding only subdirectories is a **group**. Two directories sharing a
+name are ambiguous — sync and `hr doctor` both report it rather than
+guessing.
+
+`group` in `hr.toml` is optional and does one thing: it decides where a
+feed with no directory yet gets created on its first sync.
+
+```toml
+[[feeds]]
+url   = "https://lobste.rs/newest.rss"
+name  = "lobsters"
+group = "sites"
+```
+
+Once the directory exists, its location on disk wins over `group`.
+
+`.hr/raw/<feed>/` stays flat, keyed by feed name — it's a gitignored
+cache, so moving a feed never has to touch it.
 
 ### Which vault does `hr` use?
 

@@ -11,7 +11,9 @@ import (
 // subsequent sync of the same feed item must dedup by id and not write a
 // duplicate under the original name.
 func TestWriteDedupByID(t *testing.T) {
-	dir := t.TempDir()
+	// Write now takes the feed directory itself: the caller (sync) is
+	// what resolves where a feed lives under feeds/.
+	dir := filepath.Join(t.TempDir(), "demo")
 	a := &Article{
 		Title:     "Old Title",
 		URL:       "http://example.com/x",
@@ -32,7 +34,7 @@ func TestWriteDedupByID(t *testing.T) {
 		t.Fatalf("could not extract id from %q", path)
 	}
 	newName := NameFor("New Title", time.Date(-350, 1, 1, 0, 0, 0, 0, time.UTC), id)
-	renamed := filepath.Join(dir, "demo", newName)
+	renamed := filepath.Join(dir, newName)
 	if err := os.Rename(path, renamed); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +50,7 @@ func TestWriteDedupByID(t *testing.T) {
 	if p2 != renamed {
 		t.Fatalf("dedup returned %q, want %q", p2, renamed)
 	}
-	hits, _ := filepath.Glob(filepath.Join(dir, "demo", "*.md"))
+	hits, _ := filepath.Glob(filepath.Join(dir, "*.md"))
 	if len(hits) != 1 {
 		t.Fatalf("want exactly 1 article file, got %d: %v", len(hits), hits)
 	}

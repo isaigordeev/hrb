@@ -57,9 +57,24 @@ func runNomImport(
 	}
 	defer db.Close()
 
-	feedByURL := make(map[string]string, len(cfg.Feeds))
+	feedByURL := make(map[string]config.Feed, len(cfg.Feeds))
 	for _, f := range cfg.Feeds {
-		feedByURL[f.URL] = f.Name
+		feedByURL[f.URL] = f
+	}
+
+	// Resolve each feed's directory once: they may be grouped under
+	// feeds/ at any depth, and this import creates thousands of files.
+	loc, err := v.Locate()
+	if err != nil {
+		return fmt.Errorf("locate feed directories: %w", err)
+	}
+	feedDirs := make(map[string]string, len(cfg.Feeds))
+	for _, f := range cfg.Feeds {
+		dir, err := loc.Dir(f.Name, f.Group)
+		if err != nil {
+			return err
+		}
+		feedDirs[f.Name] = dir
 	}
 
 	rows, err := db.Query(`
@@ -94,12 +109,13 @@ func runNomImport(
 			continue
 		}
 
-		feedName, ok := feedByURL[feedurl]
+		cf, ok := feedByURL[feedurl]
 		if !ok {
 			missing++
 			missingFeeds[feedurl]++
 			continue
 		}
+		feedName := cf.Name
 
 		body, err := conv.ConvertString(content)
 		if err != nil {
@@ -120,7 +136,7 @@ func runNomImport(
 			Body:      body,
 		}
 
-		written, path, err := article.Write(v.FeedsDir(), a)
+		written, path, err := article.Write(feedDirs[feedName], a)
 		if err != nil {
 			elog.Write("import-nom:write", err)
 			continue

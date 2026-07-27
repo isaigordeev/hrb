@@ -21,6 +21,13 @@ type Feed struct {
 	URL  string   `toml:"url"`
 	Name string   `toml:"name"`
 	Tags []string `toml:"tags"`
+
+	// Group is the folder under feeds/ this feed belongs to, e.g.
+	// "humans" or "sites/aggregators". It only decides where a feed
+	// with no directory yet is created: once the directory exists, its
+	// location on disk is authoritative and moving it (with `hr mv`,
+	// `mv`, or `git mv`) is what regroups the feed.
+	Group string `toml:"group"`
 }
 
 func Load(path string) (*Config, error) {

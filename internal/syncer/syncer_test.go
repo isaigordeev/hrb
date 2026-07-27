@@ -154,3 +154,65 @@ func TestRunNoFeeds(t *testing.T) {
 		t.Fatalf("got %d feeds, want 0", len(res.Feeds))
 	}
 }
+
+// A feed whose directory has been moved into a group must keep syncing
+// into that directory — not resurrect a flat one at feeds/<name>. This
+// is what makes `hr mv` (or a plain `mv`) a durable way to organize a
+// vault.
+func TestRunWritesIntoExistingGroupedDir(t *testing.T) {
+	srv := testServer(t)
+	defer srv.Close()
+	v := newVault(t)
+
+	// Pre-place the feed under a group, as a move would leave it.
+	grouped := filepath.Join(v.FeedsDir(), "humans", "alpha")
+	if err := os.MkdirAll(grouped, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := filepath.Join(grouped, "2019-01-01-seed-deadbeef.md")
+	if err := os.WriteFile(seed, []byte("seed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Run(context.Background(), Options{
+		Vault:  v,
+		Config: &config.Config{Feeds: []config.Feed{{Name: "alpha", URL: srv.URL + "/ok"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Feeds[0].Err != nil || res.Feeds[0].New != 2 {
+		t.Fatalf("alpha = %+v, want 2 new / no err", res.Feeds[0])
+	}
+
+	hits, _ := filepath.Glob(filepath.Join(grouped, "*.md"))
+	if len(hits) != 3 { // seed + 2 fetched
+		t.Errorf("grouped dir holds %d .md files, want 3", len(hits))
+	}
+	if _, err := os.Stat(filepath.Join(v.FeedsDir(), "alpha")); !os.IsNotExist(err) {
+		t.Error("sync recreated a flat feeds/alpha alongside the grouped dir")
+	}
+}
+
+// With no directory yet, a feed is created under its configured group.
+func TestRunPlacesNewFeedInConfiguredGroup(t *testing.T) {
+	srv := testServer(t)
+	defer srv.Close()
+	v := newVault(t)
+
+	_, err := Run(context.Background(), Options{
+		Vault: v,
+		Config: &config.Config{Feeds: []config.Feed{
+			{Name: "alpha", URL: srv.URL + "/ok", Group: "sites"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hits, _ := filepath.Glob(
+		filepath.Join(v.FeedsDir(), "sites", "alpha", "*.md"))
+	if len(hits) != 2 {
+		t.Errorf("feeds/sites/alpha holds %d articles, want 2", len(hits))
+	}
+}

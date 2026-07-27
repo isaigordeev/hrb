@@ -103,10 +103,11 @@ func slugify(s string) string {
 	return s
 }
 
-// Write writes the article to its feed subdirectory if it doesn't
-// already exist. Returns (created, path, error).
-func Write(feedsDir string, a *Article) (bool, string, error) {
-	feedDir := filepath.Join(feedsDir, a.FeedName)
+// Write writes the article into feedDir if it doesn't already exist,
+// creating the directory (and any parent groups) as needed. Callers
+// resolve feedDir via vault.FeedLocator, since a feed's directory may
+// sit at any depth under feeds/. Returns (created, path, error).
+func Write(feedDir string, a *Article) (bool, string, error) {
 	if err := os.MkdirAll(feedDir, 0o755); err != nil {
 		return false, "", err
 	}

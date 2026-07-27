@@ -1,9 +1,14 @@
 # hr vault config. Add or remove feeds below, then `hr sync`.
 
+# `group` is optional: it puts a feed's directory in a folder under
+# feeds/ (e.g. feeds/sites/go-blog) the first time it syncs. After that
+# the directory's location on disk is what counts — move it with `mv`
+# and hr follows.
 [[feeds]]
 url  = "https://go.dev/blog/feed.atom"
 name = "go-blog"
 tags = ["go"]
+group = "sites"
 
 # Sort order for `hr list` / `hr feed`. "desc" = newest first.
 ordering = "desc"

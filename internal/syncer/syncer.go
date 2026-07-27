@@ -73,6 +73,15 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		return nil, err
 	}
 
+	// One snapshot of feeds/ for the whole run: workers create
+	// directories as they go, so re-walking mid-sync would give
+	// different answers to the same question.
+	loc, err := opts.Vault.Locate()
+	if err != nil {
+		elog.Write("vault.locate", err)
+		return nil, fmt.Errorf("locate feed directories: %w", err)
+	}
+
 	total := len(feeds)
 	result := &Result{Feeds: make([]FeedResult, total)}
 
@@ -97,7 +106,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		// as goroutine-safe.
 		conv := md.NewConverter("", true, nil)
 		for i := range jobs {
-			fr := syncFeed(ctx, opts, feeds[i], c, conv, elog)
+			fr := syncFeed(ctx, opts, feeds[i], c, conv, elog, loc)
 			result.Feeds[i] = fr // distinct index per feed: race-free
 			if opts.OnFeedDone != nil {
 				mu.Lock()
@@ -146,6 +155,7 @@ func syncFeed(
 	c *cache.Cache,
 	conv *md.Converter,
 	elog *errlog.Log,
+	loc *vault.FeedLocator,
 ) FeedResult {
 	fr := FeedResult{Name: f.Name, URL: f.URL}
 	tag := "feed:" + f.Name
@@ -167,7 +177,12 @@ func syncFeed(
 		return fr
 	}
 
-	feedDir := filepath.Join(opts.Vault.FeedsDir(), f.Name)
+	feedDir, err := loc.Dir(f.Name, f.Group)
+	if err != nil {
+		elog.Write(tag+":locate", err)
+		fr.Err = err
+		return fr
+	}
 	deleted, _ := tombstone.DeletedIDs(feedDir)
 
 	for _, item := range res.Feed.Items {
@@ -175,7 +190,7 @@ func syncFeed(
 		if deleted[a.ID()] {
 			continue // tombstoned: sync-safe delete
 		}
-		written, path, err := article.Write(opts.Vault.FeedsDir(), a)
+		written, path, err := article.Write(feedDir, a)
 		if err != nil {
 			elog.Write(tag+":write", err)
 			fr.Err = err

@@ -164,6 +164,16 @@ func (v *Vault) FeedsDir() string {
 	return filepath.Join(v.Root, "feeds")
 }
 
+// Rel renders p relative to the vault root with forward slashes, for
+// use in messages. Paths outside the vault are returned unchanged.
+func (v *Vault) Rel(p string) string {
+	rel, err := filepath.Rel(v.Root, p)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return p
+	}
+	return filepath.ToSlash(rel)
+}
+
 func (v *Vault) MetaDir() string {
 	return filepath.Join(v.Root, ".hr")
 }

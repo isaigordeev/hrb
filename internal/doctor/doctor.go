@@ -66,24 +66,32 @@ func Check(v *vault.Vault, cfg *config.Config) (Report, error) {
 	feedNames := checkConfig(cfg, add)
 	checkGitignore(v, add)
 
-	entries, err := os.ReadDir(v.FeedsDir())
+	// Feed directories may be grouped under feeds/ at any depth, so ask
+	// the vault where they are rather than assuming one flat level.
+	loc, err := v.Locate()
 	if err != nil {
-		if os.IsNotExist(err) {
-			entries = nil
-		} else {
-			return r, fmt.Errorf("read feeds dir: %w", err)
-		}
+		return r, fmt.Errorf("read feeds dir: %w", err)
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
+	for _, name := range loc.Names() {
+		paths := loc.All()[name]
+		if len(paths) > 1 {
+			shown := make([]string, len(paths))
+			for i, p := range paths {
+				shown[i] = v.Rel(p)
+			}
+			sort.Strings(shown)
+			add(Error, "feeds",
+				"feed name %q claimed by %d directories: %s",
+				name, len(paths), strings.Join(shown, ", "))
 		}
-		name := e.Name()
-		if !feedNames[name] {
-			add(Warn, "feeds/"+name,
-				"directory not declared in hr.toml (renamed or removed feed?)")
+		for _, p := range paths {
+			rel := v.Rel(p)
+			if !feedNames[name] {
+				add(Warn, rel,
+					"directory not declared in hr.toml (renamed or removed feed?)")
+			}
+			checkFeedDir(p, name, rel, add)
 		}
-		checkFeedDir(filepath.Join(v.FeedsDir(), name), name, add)
 	}
 
 	sort.SliceStable(r.Issues, func(i, j int) bool {
@@ -126,6 +134,9 @@ func checkConfig(cfg *config.Config, add addFunc) map[string]bool {
 		if f.URL == "" {
 			add(Error, "hr.toml", "feed %q has no url", f.Name)
 		}
+		if _, err := vault.CleanGroup(f.Group); err != nil {
+			add(Error, "hr.toml", "feed %q: %v", f.Name, err)
+		}
 	}
 	return names
 }
@@ -138,10 +149,13 @@ func checkGitignore(v *vault.Vault, add addFunc) {
 	}
 }
 
-func checkFeedDir(dir, feedName string, add addFunc) {
+// checkFeedDir inspects one feed directory. relDir is its vault-relative
+// path (e.g. "feeds/humans/matklad"), used for issue paths, while
+// feedName is the identity the frontmatter should agree with.
+func checkFeedDir(dir, feedName, relDir string, add addFunc) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		add(Error, "feeds/"+feedName, "read dir: %v", err)
+		add(Error, relDir, "read dir: %v", err)
 		return
 	}
 
@@ -155,7 +169,7 @@ func checkFeedDir(dir, feedName string, add addFunc) {
 			continue
 		}
 		name := f.Name()
-		rel := "feeds/" + feedName + "/" + name
+		rel := relDir + "/" + name
 
 		switch {
 		case strings.HasSuffix(name, ".meta.toml"):
@@ -180,14 +194,14 @@ func checkFeedDir(dir, feedName string, add addFunc) {
 
 	for base := range metaBases {
 		if !mdBases[base] {
-			add(Warn, "feeds/"+feedName+"/"+base+".meta.toml",
+			add(Warn, relDir+"/"+base+".meta.toml",
 				"orphaned sidecar: no matching article")
 		}
 	}
 
 	for id, owners := range idOwners {
 		if len(owners) > 1 {
-			add(Error, "feeds/"+feedName,
+			add(Error, relDir,
 				"id %s claimed by multiple files: %s", id, strings.Join(owners, ", "))
 		}
 	}
@@ -195,7 +209,7 @@ func checkFeedDir(dir, feedName string, add addFunc) {
 	for id := range deletedIDs {
 		for base := range mdBases {
 			if strings.HasSuffix(base, "-"+id) {
-				add(Error, "feeds/"+feedName+"/"+base+".md",
+				add(Error, relDir+"/"+base+".md",
 					"tombstoned id %s still has a live article file "+
 						"(sync will keep skipping it, but it wasn't cleaned up)", id)
 			}
