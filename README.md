@@ -9,6 +9,7 @@ hr init <name> [dir]   # scaffold a vault
 hr use [dir]           # set/show the global default vault (~/.hrrc)
 hr doctor              # check the vault for inconsistencies
 hr sync                # fetch feeds, write articles + sidecars
+hr mv <feed>... <group> # move feed folders into a group under feeds/
 hr list                # list articles (pretty, --tsv, --json)
 hr read <path>...      # mark as read (sidecar mutation)
 hr unread <path>...
@@ -54,6 +55,26 @@ directory *name* wherever it sits, so you regroup with plain `mv` /
 `git mv` and nothing else has to change — no config edit, no re-sync, no
 rewritten article paths. Feed directories `hr` never fetched (a shelf of
 essays you assembled by hand) group exactly like synced ones.
+
+`hr mv` does the move for you, in batches:
+
+```sh
+hr mv matklad danluu regehr humans
+hr mv lobsters lwn sites
+hr mv knuth turing books/classics
+hr mv lobsters /                    # back to the top level
+hr mv --dry-run matklad humans      # show the plan, touch nothing
+```
+
+The group is created if missing, and group folders a move leaves empty
+are removed. The whole batch is validated before anything moves, so an
+unknown feed or an occupied destination fails with the vault untouched.
+Only directories move — articles, sidecars, ids and read state are
+untouched, and it's a plain rename, so `git` records it as one.
+
+For feeds declared in `hr.toml`, `hr mv` also updates their `group` key
+in place, preserving every comment and the rest of the formatting
+(`--no-config` skips it).
 
 A directory under `feeds/` holding at least one file is a **feed**; one
 holding only subdirectories is a **group**. Two directories sharing a
