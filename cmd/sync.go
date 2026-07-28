@@ -87,7 +87,7 @@ func feedLayout(cfg *config.Config, filter string) (nameW, total int) {
 //	26/61  yandex           +3 new
 //
 // counter dim, name left-padded, status green (+N new) / dim
-// (· up to date) / red (✗ error).
+// (· up to date) / red (✗ error) / yellow (⚠ manual).
 func liveLine(
 	st styler, nameW, counterW, i, total int, fr syncer.FeedResult,
 ) string {
@@ -96,6 +96,8 @@ func liveLine(
 	switch {
 	case fr.Err != nil:
 		status = st.red("✗ error")
+	case fr.Manual:
+		status = st.yellow("⚠ manual")
 	case fr.New > 0:
 		status = st.green(fmt.Sprintf("+%d new", fr.New))
 	default:
@@ -110,12 +112,17 @@ func liveLine(
 func printSyncSummary(r *syncer.Result, elapsed time.Duration) {
 	st := newStyler(os.Stdout)
 
-	var changed, errored []syncer.FeedResult
+	var changed, errored, manual []syncer.FeedResult
 	var totNew, unchanged, nameW int
 	for _, fr := range r.Feeds {
 		switch {
 		case fr.Err != nil:
 			errored = append(errored, fr)
+		case fr.Manual:
+			manual = append(manual, fr)
+			if len(fr.Name) > nameW {
+				nameW = len(fr.Name)
+			}
 		case fr.New > 0:
 			changed = append(changed, fr)
 			totNew += fr.New
@@ -148,6 +155,20 @@ func printSyncSummary(r *syncer.Result, elapsed time.Duration) {
 				st.dim(fmt.Sprintf("(%d total)", fr.Total)))
 		}
 	}
+	// Hand-curated feeds are never fetched, so say plainly that they only
+	// move when the user updates them.
+	if len(manual) > 0 {
+		fmt.Println()
+		fmt.Printf("  %s update by hand (no feed to poll):\n",
+			st.yellow("⚠"))
+		sort.Slice(manual, func(i, j int) bool {
+			return manual[i].Name < manual[j].Name
+		})
+		for _, fr := range manual {
+			fmt.Printf("    %-*s  %s\n", nameW, fr.Name,
+				st.dim(fmt.Sprintf("(%d total)", fr.Total)))
+		}
+	}
 	if len(errored) > 0 {
 		fmt.Println()
 		for _, fr := range errored {
@@ -160,10 +181,14 @@ func printSyncSummary(r *syncer.Result, elapsed time.Duration) {
 	if len(errored) > 0 {
 		errPart = st.red(errPart)
 	}
-	// "new" counts articles but "unchanged" counts feeds, so say so —
-	// side by side they otherwise read as the same unit.
-	fmt.Printf("  %d new · %s unchanged · %s\n",
-		totNew, plural(unchanged, "feed"), errPart)
+	// "new" counts articles but the rest count feeds, so say so — side by
+	// side they otherwise read as the same unit.
+	line := fmt.Sprintf("  %d new · %s unchanged",
+		totNew, plural(unchanged, "feed"))
+	if len(manual) > 0 {
+		line += fmt.Sprintf(" · %s manual", plural(len(manual), "feed"))
+	}
+	fmt.Printf("%s · %s\n", line, errPart)
 }
 
 // fmtDur renders an elapsed duration compactly, e.g. "6.2s".

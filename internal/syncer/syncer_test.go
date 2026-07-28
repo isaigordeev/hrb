@@ -293,3 +293,87 @@ func TestRunTotalOnResync(t *testing.T) {
 		t.Errorf("Total = %d, want 2", fr.Total)
 	}
 }
+
+// TestRunManualFeed verifies that a feed tagged "manual" is reported as
+// such without any fetch, that its on-disk archive is still counted, and
+// that it gets no cache entry.
+func TestRunManualFeed(t *testing.T) {
+	srv := testServer(t)
+	defer srv.Close()
+
+	v := newVault(t)
+	// Pre-place a hand-written article so Total has something to count.
+	dir := filepath.Join(v.FeedsDir(), "humans", "curated")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	art := filepath.Join(dir, "2024-01-01-by-hand-deadbeef.md")
+	if err := os.WriteFile(art, []byte("---\ntitle: By hand\n---\n"), 0o644); err != nil {
+		t.Fatalf("write article: %v", err)
+	}
+
+	feeds := []config.Feed{
+		{Name: "curated", Tags: []string{config.TagManual}, Group: "humans"},
+		{Name: "alpha", URL: srv.URL + "/ok"},
+	}
+	res, err := Run(context.Background(), Options{
+		Vault:     v,
+		Config:    &config.Config{Feeds: feeds},
+		UserAgent: "hr-test",
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	curated := res.Feeds[0]
+	if !curated.Manual {
+		t.Errorf("curated.Manual = false, want true")
+	}
+	if curated.Err != nil {
+		t.Errorf("curated.Err = %v, want nil (nothing is fetched)", curated.Err)
+	}
+	if curated.New != 0 || curated.Existing != 0 || curated.NotModified {
+		t.Errorf("curated = %+v, want no fetch activity", curated)
+	}
+	if curated.Total != 1 {
+		t.Errorf("curated.Total = %d, want 1 (the hand-written article)",
+			curated.Total)
+	}
+
+	// The URL-backed feed alongside it still syncs normally.
+	if res.Feeds[1].New != 2 {
+		t.Errorf("alpha.New = %d, want 2", res.Feeds[1].New)
+	}
+
+	// No cache entry: there was no response to remember.
+	c, err := cache.Load(v.CachePath())
+	if err != nil {
+		t.Fatalf("load cache: %v", err)
+	}
+	if got := c.Get("curated"); got.ETag != "" || !got.FetchedAt.IsZero() {
+		t.Errorf("curated cache entry = %+v, want empty", got)
+	}
+}
+
+// TestFeedIsManual covers the tag lookup: case-insensitive, whitespace
+// tolerant, and false for feeds carrying other tags.
+func TestFeedIsManual(t *testing.T) {
+	cases := []struct {
+		tags []string
+		want bool
+	}{
+		{nil, false},
+		{[]string{"manual"}, true},
+		{[]string{"Manual"}, true},
+		{[]string{" manual "}, true},
+		{[]string{"ai", "manual"}, true},
+		{[]string{"manually-curated"}, false},
+		{[]string{"ai"}, false},
+	}
+	for _, c := range cases {
+		if got := (config.Feed{Tags: c.tags}).IsManual(); got != c.want {
+			t.Errorf("Feed{Tags: %v}.IsManual() = %v, want %v",
+				c.tags, got, c.want)
+		}
+	}
+}

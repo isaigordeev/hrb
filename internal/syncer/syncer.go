@@ -62,7 +62,12 @@ type FeedResult struct {
 	// nothing was counted.
 	Total       int
 	NotModified bool
-	Err         error
+
+	// Manual is set for a hand-curated feed (config.TagManual). Nothing
+	// was fetched: the feed has no URL to poll and only changes when its
+	// articles are updated by hand.
+	Manual bool
+	Err    error
 }
 
 type Result struct {
@@ -169,6 +174,16 @@ func syncFeed(
 ) FeedResult {
 	fr := FeedResult{Name: f.Name, URL: f.URL}
 	tag := "feed:" + f.Name
+
+	// A hand-curated feed has nothing to poll: report it so sync can say
+	// it needs updating by hand, and leave the cache entry untouched.
+	if f.IsManual() {
+		fr.Manual = true
+		if dir, err := loc.Dir(f.Name, f.Group); err == nil {
+			fr.Total = countArticles(dir)
+		}
+		return fr
+	}
 
 	entry := c.Get(f.Name)
 	fopts := feed.Options{UserAgent: opts.UserAgent}

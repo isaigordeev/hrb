@@ -59,6 +59,11 @@ func runNomImport(
 
 	feedByURL := make(map[string]config.Feed, len(cfg.Feeds))
 	for _, f := range cfg.Feeds {
+		// Manual feeds carry no url: they would all collide on the empty
+		// key, and no nom row can match them anyway.
+		if f.URL == "" {
+			continue
+		}
 		feedByURL[f.URL] = f
 	}
 

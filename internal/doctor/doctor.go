@@ -131,8 +131,19 @@ func checkConfig(cfg *config.Config, add addFunc) map[string]bool {
 			add(Error, "hr.toml", "duplicate feed name %q", f.Name)
 		}
 		names[f.Name] = true
-		if f.URL == "" {
-			add(Error, "hr.toml", "feed %q has no url", f.Name)
+		switch {
+		case f.IsManual():
+			// A hand-curated feed has nothing to poll; a url alongside the
+			// tag is contradictory, since sync will never fetch it.
+			if f.URL != "" {
+				add(Warn, "hr.toml",
+					"feed %q is tagged %q but also has a url; sync skips it",
+					f.Name, config.TagManual)
+			}
+		case f.URL == "":
+			add(Error, "hr.toml",
+				"feed %q has no url (tag it %q if it is hand-curated)",
+				f.Name, config.TagManual)
 		}
 		if _, err := vault.CleanGroup(f.Group); err != nil {
 			add(Error, "hr.toml", "feed %q: %v", f.Name, err)

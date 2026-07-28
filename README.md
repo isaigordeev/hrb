@@ -129,6 +129,36 @@ Once the directory exists, its location on disk wins over `group`.
 `.hr/raw/<feed>/` stays flat, keyed by feed name — it's a gitignored
 cache, so moving a feed never has to touch it.
 
+### Hand-curated feeds
+
+Not every source has a feed worth polling. A site with no RSS, or one
+whose feed carries only headlines, can still live in the vault as a
+**manual** feed: declare it with the `manual` tag and no `url`.
+
+```toml
+[[feeds]]
+name  = "paulgraham"
+tags  = ["manual"]
+group = "humans"
+```
+
+`hr sync` never fetches such a feed. It reports it instead, so a sync
+run tells you which feeds only move when you update them by hand:
+
+```
+  1/2  paulgraham  ⚠ manual
+  2/2  lobsters    +3 new
+
+  ⚠ update by hand (no feed to poll):
+    paulgraham  (18 total)
+
+  3 new · 0 feeds unchanged · 1 feed manual · 0 errors
+```
+
+Declaring them has a second benefit: `hr doctor` stops reporting the
+directory as *"not declared in hr.toml"*. A `url` alongside the tag is
+flagged as contradictory, since sync skips the feed either way.
+
 ### Which vault does `hr` use?
 
 Resolved in priority order: `-C <dir>` flag > `$HR_VAULT` > walking up

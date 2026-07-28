@@ -23,7 +23,8 @@ func (s styler) wrap(code, str string) string {
 	return "\x1b[" + code + "m" + str + "\x1b[0m"
 }
 
-func (s styler) green(str string) string { return s.wrap("32", str) }
-func (s styler) red(str string) string   { return s.wrap("31", str) }
-func (s styler) dim(str string) string   { return s.wrap("2", str) }
-func (s styler) bold(str string) string  { return s.wrap("1", str) }
+func (s styler) green(str string) string  { return s.wrap("32", str) }
+func (s styler) red(str string) string    { return s.wrap("31", str) }
+func (s styler) yellow(str string) string { return s.wrap("33", str) }
+func (s styler) dim(str string) string    { return s.wrap("2", str) }
+func (s styler) bold(str string) string   { return s.wrap("1", str) }
