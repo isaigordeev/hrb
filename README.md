@@ -146,10 +146,10 @@ group = "humans"
 run tells you which feeds only move when you update them by hand:
 
 ```
-  1/2  paulgraham  ⚠ manual
+  1/2  paulgraham  · manual
   2/2  lobsters    +3 new
 
-  ⚠ update by hand (no feed to poll):
+  · update by hand (no feed to poll):
     paulgraham  (18 total)
 
   3 new · 0 feeds unchanged · 1 feed manual · 0 errors

@@ -87,7 +87,7 @@ func feedLayout(cfg *config.Config, filter string) (nameW, total int) {
 //	26/61  yandex           +3 new
 //
 // counter dim, name left-padded, status green (+N new) / dim
-// (· up to date) / red (✗ error) / yellow (⚠ manual).
+// (· up to date) / red (✗ error) / green (· manual).
 func liveLine(
 	st styler, nameW, counterW, i, total int, fr syncer.FeedResult,
 ) string {
@@ -97,7 +97,7 @@ func liveLine(
 	case fr.Err != nil:
 		status = st.red("✗ error")
 	case fr.Manual:
-		status = st.yellow("⚠ manual")
+		status = st.green("· manual")
 	case fr.New > 0:
 		status = st.green(fmt.Sprintf("+%d new", fr.New))
 	default:
@@ -160,7 +160,7 @@ func printSyncSummary(r *syncer.Result, elapsed time.Duration) {
 	if len(manual) > 0 {
 		fmt.Println()
 		fmt.Printf("  %s update by hand (no feed to poll):\n",
-			st.yellow("⚠"))
+			st.green("·"))
 		sort.Slice(manual, func(i, j int) bool {
 			return manual[i].Name < manual[j].Name
 		})
